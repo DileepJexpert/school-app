@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Alice Johnson",
+    "class": "10A",
+    "subject": "Math",
+    "marks": 95
+  },
+  {
+    "name": "Bob Smith",
+    "class": "10A",
+    "subject": "Science",
+    "marks": 89
+  },
+  {
+    "name": "Charlie Lee",
+    "class": "10B",
+    "subject": "English",
+    "marks": 78
+  }
+]
