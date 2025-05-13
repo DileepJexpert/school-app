@@ -98,25 +98,54 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // Helper method to build the admin dropdown menu
   Widget _buildAdminDropdown(BuildContext context) {
     return PopupMenuButton<String>(
-      icon: Icon(Icons.admin_panel_settings, color: Colors.white),
+      icon: const Icon(Icons.admin_panel_settings_rounded, color: Colors.white), // Ensure icon color matches AppBar
+      tooltip: "Admin Actions",
       onSelected: (value) {
         if (value == 'upload_results') {
           Navigator.pushNamed(context, '/result-upload');
         } else if (value == 'upload_gallery') {
-          Navigator.pushNamed(context, '/result-gallery-upload');
+          // Make sure '/result-gallery-upload' route is defined in main.dart
+          // For now, let's assume it exists or show a placeholder
+          if (ModalRoute.of(context)?.settings.name != '/result-gallery-upload') { // Avoid pushing if already there (optional)
+            Navigator.pushNamed(context, '/result-gallery-upload');
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Result Gallery Upload page not yet implemented or route missing.'))
+            );
+          }
+        } else if (value == 'full_admin_dashboard') {
+          Navigator.pushNamed(context, '/admin-dashboard');
         }
       },
       itemBuilder: (BuildContext context) {
         return [
           PopupMenuItem<String>(
             value: 'upload_results',
-            child: Row(children: [Icon(Icons.upload_file), SizedBox(width: 8), Text('Upload Results')]),
+            child: Row(children: const [
+              Icon(Icons.upload_file_outlined, color: Colors.black54),
+              SizedBox(width: 10),
+              Text('Upload Results')
+            ]),
           ),
           PopupMenuItem<String>(
             value: 'upload_gallery',
-            child: Row(children: [Icon(Icons.photo_library), SizedBox(width: 8), Text('Upload Gallery')]),
+            child: Row(children: const [
+              Icon(Icons.photo_library_outlined, color: Colors.black54),
+              SizedBox(width: 10),
+              Text('Upload Gallery')
+            ]),
+          ),
+          const PopupMenuDivider(),
+          PopupMenuItem<String>(
+            value: 'full_admin_dashboard',
+            child: Row(children: const [
+              Icon(Icons.dashboard_customize_outlined, color: Colors.black54),
+              SizedBox(width: 10),
+              Text('Full Admin Dashboard')
+            ]),
           ),
         ];
       },
