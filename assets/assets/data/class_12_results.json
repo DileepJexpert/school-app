@@ -1,0 +1,35 @@
+{
+  "className": "Class 10",
+  "year": 2024,
+  "subjects": ["Math", "Science", "English", "Social Studies", "Hindi"],
+  "students": [
+    {
+      "id": "S1001",
+      "name": "Alice Smith",
+      "marks": {
+        "Math": 85,
+        "Science": 90,
+        "English": 78,
+        "Social Studies": 88,
+        "Hindi": 82
+      },
+      "total": 423,
+      "percentage": 84.6,
+      "grade": "A"
+    },
+    {
+      "id": "S1002",
+      "name": "Bob Johnson",
+      "marks": {
+        "Math": 70,
+        "Science": 75,
+        "English": 65,
+        "Social Studies": 72,
+        "Hindi": 68
+      },
+      "total": 350,
+      "percentage": 70.0,
+      "grade": "B"
+    }
+  ]
+}
