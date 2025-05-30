@@ -8,7 +8,7 @@ import 'pages/admission_form_page.dart'; // New import
 import 'pages/enquiry_page.dart'; // New import
 //import 'pages/result_gallery_upload_page.dart'; // Add this import
 import 'pages/result_upload_page.dart'; // Add this import
-
+import 'package:flutter_web_plugins/url_strategy.dart';
 // Import the Admin Dashboard Page
 // Adjust the path if your AdminDashboardPage is located elsewhere
 import 'admin/admin_dashboard_page.dart';
@@ -20,6 +20,7 @@ void main() {
   // await Firebase.initializeApp(
   //   options: DefaultFirebaseOptions.currentPlatform, // From firebase_options.dart
   // );
+  usePathUrlStrategy(); // Optional: Removes '#' from URLs
   runApp(MyApp());
 }
 
