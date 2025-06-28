@@ -84,7 +84,7 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
     setState(() {
       _isFetchingStructure = true;
       _errorMessage = null;
-      _currentlySelectedClassSetup = null; // Clear selected class detail
+      _currentlySelectedClassSetup = null;
       for (var setup in _classFeeSetups) {
         setup.dispose();
       }
@@ -125,7 +125,7 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
     _classFeeSetups = _schoolClasses
         .map((className) => ClassFeeSetupData(className: className, allFeeHeads: _feeHeads))
         .toList();
-    setState(() {}); // To refresh UI if needed
+    setState(() {});
   }
 
   @override
@@ -141,14 +141,10 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select an academic year.')));
       return;
     }
-    // Form validation is now implicitly handled by TextFormFields if they are part of a Form.
-    // If not, individual validation per field or a global check might be needed.
-    // For this structure, the form key wraps the entire content, so it should validate all visible fields.
     if (!_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please correct errors before saving.')));
       return;
     }
-
 
     setState(() => _isLoading = true);
     List<Map<String, dynamic>> feeStructurePayload = _classFeeSetups.map((classSetup) {
@@ -179,19 +175,25 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
     final TextTheme textTheme = Theme.of(context).textTheme;
 
-    return Scaffold(
+    return Scaffold( // Added Scaffold
+      appBar: AppBar( // Added AppBar
+        title: Text("Fee Structure Setup", style: GoogleFonts.lato()),
+        // backgroundColor: colorScheme.primaryContainer, // Optional: customize AppBar color
+        // elevation: 1, // Optional: customize elevation
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Form( // Wrap the content in a Form for validation
+        child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("Set Up School Fee Structure", style: GoogleFonts.oswald(fontSize: 26, fontWeight: FontWeight.bold, color: colorScheme.primary)),
-              const SizedBox(height: 16),
+              // Title is now in AppBar, this can be a subtitle or removed
+              // Text("Set Up School Fee Structure", style: GoogleFonts.oswald(fontSize: 26, fontWeight: FontWeight.bold, color: colorScheme.primary)),
+              // const SizedBox(height: 16),
               if (_errorMessage != null) Text(_errorMessage!, style: TextStyle(color: Colors.red, fontSize: 14)),
 
-              Row(children: [ // Academic Year Dropdown
+              Row(children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     decoration: InputDecoration(labelText: 'Select Academic Year', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), prefixIcon: Icon(Icons.calendar_today_outlined, color: colorScheme.primary)),
@@ -215,7 +217,7 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      bool isWideScreen = constraints.maxWidth > 700; // Breakpoint for two-panel layout
+                      bool isWideScreen = constraints.maxWidth > 700;
                       if (isWideScreen) {
                         return Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -231,7 +233,7 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
                             ),
                           ],
                         );
-                      } else { // Narrow screen: Stacked layout or navigation
+                      } else {
                         return _buildStackedLayout(colorScheme, textTheme);
                       }
                     },
@@ -266,7 +268,7 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(bottom: 8.0),
+          padding: const EdgeInsets.only(bottom: 8.0, top: 0), // Adjusted top padding
           child: Text("Classes", style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
         ),
         Expanded(
@@ -289,6 +291,7 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                   onTap: () => _selectClassForEditing(classSetup),
                   trailing: isSelected ? Icon(Icons.arrow_forward_ios_rounded, size: 16, color: colorScheme.primary) : null,
+                  dense: true,
                 );
               },
               separatorBuilder: (context, index) => const Divider(height: 1, thickness: 0.5),
@@ -305,7 +308,7 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Text(
-            "Select a class from the left to define its fee components.",
+            "Select a class from the list to define its fee components.",
             style: textTheme.titleMedium?.copyWith(color: Colors.grey.shade700),
             textAlign: TextAlign.center,
           ),
@@ -317,19 +320,19 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(bottom: 8.0),
+          padding: const EdgeInsets.only(bottom: 8.0, top: 0), // Adjusted top padding
           child: Text(
             "Fee Components for: ${_currentlySelectedClassSetup!.className}",
             style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.primary),
           ),
         ),
         Expanded(
-          child: Card( // Card around the fee inputs for better visual grouping
+          child: Card(
             elevation: 1,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             child: Padding(
               padding: const EdgeInsets.all(12.0),
-              child: ListView( // Use ListView for scrollability if many fee heads
+              child: ListView(
                 children: _feeHeads.map((feeHead) {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -374,17 +377,16 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
   }
 
   Widget _buildStackedLayout(ColorScheme colorScheme, TextTheme textTheme) {
-    // For narrow screens, show class list. If a class is selected, show its fee inputs below.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          height: MediaQuery.of(context).size.height * 0.3, // Allocate some height for class list
+          height: MediaQuery.of(context).size.height * 0.3,
           child: _buildClassListPanel(colorScheme, textTheme),
         ),
         if (_currentlySelectedClassSetup != null) ...[
           const Divider(height: 20, thickness: 1),
-          Expanded( // Let fee input take remaining space
+          Expanded(
             child: _buildFeeInputPanel(colorScheme, textTheme),
           ),
         ] else ... [

@@ -20,8 +20,9 @@ dependencies:
   shared_preferences: ^2.2.3 # Or lates
   dio: ^5.4.3+1 # Or latest
   json_annotation: ^4.9.0 # Or latest
+  http: ^1.2.1
   # Add other packages here if you use them, e.g., go_router, photo_view
-
+  fl_chart: ^0.67.0 # Check for the latest version on pub.dev
   cupertino_icons: ^1.0.6
   intl: 0.20.2
 dev_dependencies:

@@ -2,6 +2,7 @@
 // This page acts as a hub for various fee-related actions.
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:school_website/admin/fee/transaction_history_page.dart';
 
 // Import the sub-pages
 import 'fee_collection_page.dart'; // Assuming you have this for "Collect Fee"
@@ -10,6 +11,8 @@ import 'fee_collection_page.dart'; // Assuming you have this for "Collect Fee"
 
 // Import the Fee Setup Page
 import 'fee_setup_page.dart'; // Assuming fee_setup_page.dart is in the same folder
+import 'fee_reports_page.dart';
+import 'financial_management_info_page.dart'; // Assuming fee_setup_page.dart is in the same folder
 
 class FeeModulePage extends StatelessWidget {
   const FeeModulePage({super.key});
@@ -83,9 +86,10 @@ class FeeModulePage extends StatelessWidget {
                   subtitle: 'View fee collection summaries and dues.',
                   color: Colors.orange.shade700,
                   onTap: () {
-                    // TODO: Navigate to Fee Reports Page
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Navigate to Fee Reports Page (Not Implemented Yet)')));
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const FeeReportsPage()),
+                    );
                   },
                 ),
                 _buildModuleActionCard(
@@ -96,9 +100,10 @@ class FeeModulePage extends StatelessWidget {
                   color: Colors.purple.shade600,
                   onTap: () {
                     // TODO: Navigate to Transaction History Page
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Navigate to Transaction History (Not Implemented Yet)')));
-                  },
+                    Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const TransactionHistoryPage()),
+    );},
                 ),
                 _buildModuleActionCard(
                   context,
