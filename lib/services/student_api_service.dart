@@ -4,7 +4,7 @@ import '../models/admission_data.dart';
 
 
 class StudentApiService {
-  static const String _baseUrl = "http://localhost:8080/api";
+  static const String _baseUrl = "https://school-app-backend-me4n.onrender.com/api";
 
   // --- ADD THIS NEW METHOD ---
   static Future<List<Student>> getStudents() async {
