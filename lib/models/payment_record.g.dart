@@ -8,27 +8,33 @@ part of 'payment_record.dart';
 
 PaymentRecord _$PaymentRecordFromJson(Map<String, dynamic> json) =>
     PaymentRecord(
+      id: json['transactionId'] as String,
       receiptNumber: json['receiptNumber'] as String,
-      paymentDate:
-          PaymentRecord._dateTimeFromJson(json['paymentDate'] as String),
-      amountPaid: (json['amountPaid'] as num).toDouble(),
+      studentId: json['studentId'] as String,
+      studentName: json['studentName'] as String,
+      paymentDate: _dateFromJson(json['paymentDate'] as String),
+      amountPaid: _doubleFromNum(json['amountPaid'] as num?),
+      discount: json['discount'] == null
+          ? 0.0
+          : _doubleFromNum(json['discount'] as num?),
       paymentMode: json['paymentMode'] as String,
-      paidForMonths: (json['paidForMonths'] as List<dynamic>)
-          .map((e) => e as String)
-          .toList(),
+      paidForInstallments: (json['paidForInstallments'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
       remarks: json['remarks'] as String?,
-      chequeDetails: json['chequeDetails'] as String?,
-      transactionId: json['transactionId'] as String?,
     );
 
 Map<String, dynamic> _$PaymentRecordToJson(PaymentRecord instance) =>
     <String, dynamic>{
+      'transactionId': instance.id,
       'receiptNumber': instance.receiptNumber,
-      'paymentDate': PaymentRecord._dateTimeToJson(instance.paymentDate),
+      'studentId': instance.studentId,
+      'studentName': instance.studentName,
+      'paymentDate': instance.paymentDate.toIso8601String(),
       'amountPaid': instance.amountPaid,
+      'discount': instance.discount,
       'paymentMode': instance.paymentMode,
-      'paidForMonths': instance.paidForMonths,
+      'paidForInstallments': instance.paidForInstallments,
       'remarks': instance.remarks,
-      'chequeDetails': instance.chequeDetails,
-      'transactionId': instance.transactionId,
     };

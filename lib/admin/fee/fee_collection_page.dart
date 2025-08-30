@@ -1,76 +1,17 @@
-// lib/admin/pages/fee/fee_collection_page.dart
-import 'dart:async'; // For Timer (debouncing)
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart'; // For date formatting
+import 'package:intl/intl.dart';
 
-// --- Mock Data Models (Same as before) ---
-class PaymentTransaction {
-  final String receiptNumber;
-  final DateTime paymentDate;
-  final double amountPaid;
-  final String paymentMode;
-  final List<String> paidForMonths;
-  final String remarks;
+// Import your data models and API service
+import '../../../models/student_fee_profile.dart';
+import '../../../models/fee_installment.dart';
+import '../../../models/payment_record.dart';
+import '../../../models/fee_payment_request.dart';
+import '../../../services/fee_api_service.dart';
+import '../../../exceptions/api_exception.dart';
 
-  PaymentTransaction({
-    required this.receiptNumber,
-    required this.paymentDate,
-    required this.amountPaid,
-    required this.paymentMode,
-    required this.paidForMonths,
-    this.remarks = "",
-  });
-}
 
-class StudentFeeProfile {
-  final String id;
-  final String name;
-  final String className; // e.g., "Class 10 A"
-  final String rollNumber;
-  final String parentName;
-  final List<FeeMonthEntry> monthlyFees;
-  final PaymentTransaction? lastPayment;
-
-  StudentFeeProfile({
-    required this.id,
-    required this.name,
-    required this.className,
-    required this.rollNumber,
-    required this.parentName,
-    required this.monthlyFees,
-    this.lastPayment,
-  });
-
-  double get totalAnnualFeeEstimate => monthlyFees.fold(0.0, (sum, item) => sum + item.totalMonthlyFeeOriginal);
-  double get totalPaidInSession => monthlyFees.where((m) => m.isPaid).fold(0.0, (sum, item) => sum + item.totalMonthlyFeeOriginal);
-  double get currentSessionOutstanding => totalAnnualFeeEstimate - totalPaidInSession;
-}
-
-class FeeMonthEntry {
-  final String monthYear; // e.g., "April 2024"
-  final double tuitionFee;
-  final double transportFee;
-  final double otherCharges;
-  bool isPaid;
-  bool isSelectedForPayment; // Used to select UNPAID months for current transaction
-  double lateFineApplied;
-
-  FeeMonthEntry({
-    required this.monthYear,
-    required this.tuitionFee,
-    this.transportFee = 0.0,
-    this.otherCharges = 0.0,
-    this.isPaid = false,
-    this.isSelectedForPayment = false,
-    this.lateFineApplied = 0.0,
-  });
-
-  double get totalMonthlyFeeOriginal => tuitionFee + transportFee + otherCharges;
-  double get totalMonthlyFeeWithFine => totalMonthlyFeeOriginal + lateFineApplied;
-}
-
-// --- Fee Collection Page ---
 class FeeCollectionPage extends StatefulWidget {
   const FeeCollectionPage({super.key});
 
@@ -79,25 +20,32 @@ class FeeCollectionPage extends StatefulWidget {
 }
 
 class _FeeCollectionPageState extends State<FeeCollectionPage> {
+  // API Service Instance
+  final FeeApiService _feeApiService = FeeApiService();
+
+  // State variables
   final TextEditingController _searchNameOrIdController = TextEditingController();
   final TextEditingController _searchRollNoController = TextEditingController();
   String? _selectedClassFilter;
 
+  List<StudentFeeProfile> _searchResults = [];
   StudentFeeProfile? _selectedStudent;
-  List<FeeMonthEntry> _feeMonthsToPay = [];
-  bool _searchAttempted = false;
+
+  bool _isSearching = false;
+  bool _isProcessingPayment = false;
+  String? _errorMessage;
   Timer? _debounce;
 
+  // Form field controllers
   double _discountAmount = 0.0;
   final TextEditingController _discountController = TextEditingController(text: "0.00");
-
   DateTime _paymentDate = DateTime.now();
   String? _selectedPaymentMode;
   final TextEditingController _remarksController = TextEditingController();
   final TextEditingController _chequeDetailsController = TextEditingController();
   final TextEditingController _transactionIdController = TextEditingController();
 
-  final List<String> _paymentModes = ['Cash', 'Cheque', 'Digital Payment', 'Challan'];
+  final List<String> _paymentModes = ['CASH', 'CHEQUE', 'DIGITAL_PAYMENT', 'CHALLAN'];
   final List<String> _classListForFilter = [
     "Class 9 A", "Class 9 B", "Class 10 A", "Class 10 B", "Class 11 Science", "Class 11 Commerce", "Class 12 Science", "Class 12 Commerce"
   ];
@@ -126,70 +74,78 @@ class _FeeCollectionPageState extends State<FeeCollectionPage> {
 
   void _onSearchChanged() {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 500), () {
-      _performSearch();
-    });
+    _debounce = Timer(const Duration(milliseconds: 600), _performSearch);
   }
 
-  void _performSearch() {
-    _searchStudent(
-        _searchNameOrIdController.text,
-        _selectedClassFilter,
-        _searchRollNoController.text
-    );
-  }
+  void _performSearch() async {
+    final name = _searchNameOrIdController.text;
+    final rollNo = _searchRollNoController.text;
+    final className = _selectedClassFilter;
 
-  void _searchStudent(String nameOrIdQuery, String? classFilter, String rollNoQuery) {
-    setState(() { _searchAttempted = true; });
-    if (nameOrIdQuery.isEmpty && (classFilter == null || classFilter.isEmpty) && rollNoQuery.isEmpty) {
+    if (name.isEmpty && rollNo.isEmpty && className == null) {
       setState(() {
+        _searchResults = [];
         _selectedStudent = null;
-        _feeMonthsToPay.clear();
-        _resetPaymentFields();
+        _errorMessage = null;
       });
       return;
     }
-    List<StudentFeeProfile> mockStudents = [
-      StudentFeeProfile(
-          id: "S1001", name: "Rohan Sharma", className: "Class 10 A", rollNumber: "15", parentName: "Mr. Anil Sharma",
-          monthlyFees: [
-            FeeMonthEntry(monthYear: "April 2024", tuitionFee: 2500, transportFee: 800, isPaid: true),
-            FeeMonthEntry(monthYear: "May 2024", tuitionFee: 2500, transportFee: 800, isPaid: true),
-            FeeMonthEntry(monthYear: "June 2024", tuitionFee: 2500, transportFee: 800),
-            FeeMonthEntry(monthYear: "July 2024", tuitionFee: 2500, transportFee: 800),
-            FeeMonthEntry(monthYear: "August 2024", tuitionFee: 2500, transportFee: 800, lateFineApplied: 100),
-            FeeMonthEntry(monthYear: "September 2024", tuitionFee: 2500, transportFee: 800),
-            FeeMonthEntry(monthYear: "October 2024", tuitionFee: 2500, transportFee: 800),
-            FeeMonthEntry(monthYear: "November 2024", tuitionFee: 2500, transportFee: 800),
-            FeeMonthEntry(monthYear: "December 2024", tuitionFee: 2500, transportFee: 800),
-            FeeMonthEntry(monthYear: "January 2025", tuitionFee: 2500, transportFee: 800),
-            FeeMonthEntry(monthYear: "February 2025", tuitionFee: 2500, transportFee: 800),
-            FeeMonthEntry(monthYear: "March 2025", tuitionFee: 2500, transportFee: 800),
-          ],
-          lastPayment: PaymentTransaction(receiptNumber: "RCPT12345", paymentDate: DateTime(2024, 5, 10), amountPaid: 6600.00, paymentMode: "Digital Payment", paidForMonths: ["April 2024", "May 2024"])
-      ),
-    ];
-    StudentFeeProfile? foundStudent;
-    for (var student in mockStudents) {
-      bool nameMatch = nameOrIdQuery.isEmpty || student.name.toLowerCase().contains(nameOrIdQuery.toLowerCase()) || student.id.toLowerCase().contains(nameOrIdQuery.toLowerCase());
-      bool classMatch = classFilter == null || classFilter.isEmpty || student.className == classFilter;
-      bool rollNoMatch = rollNoQuery.isEmpty || student.rollNumber.toLowerCase() == rollNoQuery.toLowerCase();
-      if (nameMatch && classMatch && rollNoMatch) {
-        foundStudent = student;
-        break;
-      }
-    }
+
     setState(() {
-      _selectedStudent = foundStudent;
-      if (_selectedStudent != null) {
-        for (var month in _selectedStudent!.monthlyFees) {
-          month.isSelectedForPayment = false;
-        }
-      } else {
-        _feeMonthsToPay.clear();
-      }
-      _resetPaymentFields();
+      _isSearching = true;
+      _errorMessage = null;
+      _selectedStudent = null;
+      _searchResults = [];
     });
+
+    try {
+      final results = await _feeApiService.searchStudents(
+        name: name,
+        className: className,
+        rollNumber: rollNo,
+      );
+
+      if (results.isEmpty) {
+        setState(() => _errorMessage = "No students found matching the criteria.");
+      } else if (results.length == 1) {
+        setState(() {
+          _selectedStudent = results.first;
+          _searchResults = [];
+          _resetPaymentFields();
+        });
+      } else {
+        setState(() => _searchResults = results);
+      }
+    } on ApiException catch (e) {
+      setState(() => _errorMessage = e.message);
+    } catch (e) {
+      setState(() => _errorMessage = "An unexpected error occurred: $e");
+    } finally {
+      setState(() => _isSearching = false);
+    }
+  }
+
+  Future<void> _loadStudentProfile(String studentId) async {
+    setState(() {
+      _isSearching = true;
+      _errorMessage = null;
+      _selectedStudent = null;
+      _searchResults = [];
+    });
+
+    try {
+      final studentProfile = await _feeApiService.getStudentFeeProfileById(studentId);
+      setState(() {
+        _selectedStudent = studentProfile;
+        _resetPaymentFields();
+      });
+    } on ApiException catch (e) {
+      setState(() => _errorMessage = e.message);
+    } catch (e) {
+      setState(() => _errorMessage = "An unexpected error occurred: $e");
+    } finally {
+      setState(() => _isSearching = false);
+    }
   }
 
   void _resetPaymentFields() {
@@ -201,28 +157,20 @@ class _FeeCollectionPageState extends State<FeeCollectionPage> {
     _chequeDetailsController.clear();
     _transactionIdController.clear();
     if (_selectedStudent != null) {
-      for (var monthEntry in _selectedStudent!.monthlyFees) {
-        if (!monthEntry.isPaid) {
-          monthEntry.isSelectedForPayment = false;
-        }
+      for (var installment in _selectedStudent!.feeInstallments) {
+        installment.isSelectedForPayment = false;
       }
     }
   }
 
   double _calculateTotalSelectedFee() {
-    double total = 0;
-    if (_selectedStudent == null) return total;
-    for (var monthEntry in _selectedStudent!.monthlyFees) {
-      if (monthEntry.isSelectedForPayment && !monthEntry.isPaid) {
-        total += monthEntry.totalMonthlyFeeWithFine;
-      }
-    }
-    return total;
+    if (_selectedStudent == null) return 0.0;
+    return _selectedStudent!.feeInstallments
+        .where((m) => m.isSelectedForPayment && m.status != 'PAID')
+        .fold(0.0, (sum, item) => sum + item.amountDue);
   }
 
-  double _calculateNetPayable() {
-    return _calculateTotalSelectedFee() - _discountAmount;
-  }
+  double _calculateNetPayable() => _calculateTotalSelectedFee() - _discountAmount;
 
   Future<void> _selectPaymentDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
@@ -231,52 +179,66 @@ class _FeeCollectionPageState extends State<FeeCollectionPage> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now().add(const Duration(days: 30)),
     );
-    if (picked != null && picked != _paymentDate) setState(() { _paymentDate = picked; });
+    if (picked != null && picked != _paymentDate) {
+      setState(() => _paymentDate = picked);
+    }
   }
 
-  void _processPayment() {
-    if (_selectedStudent == null) { return; }
-    final List<FeeMonthEntry> monthsToProcess = _selectedStudent!.monthlyFees
-        .where((m) => m.isSelectedForPayment && !m.isPaid)
+  Future<void> _processPayment() async {
+    if (_selectedStudent == null) return;
+
+    final List<String> installmentsToPay = _selectedStudent!.feeInstallments
+        .where((m) => m.isSelectedForPayment && m.status != 'PAID')
+        .map((m) => m.installmentName)
         .toList();
-    if (monthsToProcess.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please select at least one unpaid month for payment.')));
+
+    if (installmentsToPay.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select at least one unpaid installment.')));
       return;
     }
-    if (_selectedPaymentMode == null) { return; }
-    if (_calculateNetPayable() < 0) { return; }
+    if (_selectedPaymentMode == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a payment mode.')));
+      return;
+    }
 
-    final List<String> selectedMonthYears = monthsToProcess.map((m) => m.monthYear).toList();
-    final double netAmountPaid = _calculateNetPayable();
-    final String receiptNumber = "RCPT${DateTime.now().millisecondsSinceEpoch}";
-    PaymentTransaction newPayment = PaymentTransaction(
-      receiptNumber: receiptNumber, paymentDate: _paymentDate, amountPaid: netAmountPaid,
-      paymentMode: _selectedPaymentMode!, paidForMonths: selectedMonthYears, remarks: _remarksController.text,
+    setState(() => _isProcessingPayment = true);
+
+    final paymentRequest = FeePaymentRequest(
+      studentId: _selectedStudent!.id,
+      amount: _calculateNetPayable(),
+      discount: _discountAmount,
+      installmentNames: installmentsToPay,
+      paymentMode: _selectedPaymentMode!,
+      remarks: _remarksController.text.isNotEmpty ? _remarksController.text : null,
+      chequeDetails: _selectedPaymentMode == 'CHEQUE' ? _chequeDetailsController.text : null,
+      transactionId: _selectedPaymentMode == 'DIGITAL_PAYMENT' ? _transactionIdController.text : null,
     );
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Payment of ₹$netAmountPaid processed! Receipt: $receiptNumber'),
-      backgroundColor: Colors.green,
-    ));
-    setState(() {
-      for (var monthEntry in _selectedStudent!.monthlyFees) {
-        if (monthEntry.isSelectedForPayment && !monthEntry.isPaid) {
-          monthEntry.isPaid = true;
-          monthEntry.isSelectedForPayment = false;
-        }
+
+    try {
+      final paymentRecord = await _feeApiService.collectFee(paymentRequest);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Payment successful! Receipt No: ${paymentRecord.receiptNumber}'),
+          backgroundColor: Colors.green,
+        ));
+        _showReceiptDialog(paymentRecord);
+        _loadStudentProfile(_selectedStudent!.id);
       }
-      _selectedStudent = StudentFeeProfile(
-        id: _selectedStudent!.id, name: _selectedStudent!.name, className: _selectedStudent!.className,
-        rollNumber: _selectedStudent!.rollNumber, parentName: _selectedStudent!.parentName,
-        monthlyFees: _selectedStudent!.monthlyFees, lastPayment: newPayment,
-      );
-      _feeMonthsToPay = _selectedStudent!.monthlyFees.where((m) => !m.isPaid).toList();
-      _resetPaymentFields();
-    });
-    _showReceiptDialog(receiptNumber, netAmountPaid, selectedMonthYears);
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Payment Failed: ${e.message}'),
+          backgroundColor: Colors.redAccent,
+        ));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingPayment = false);
+      }
+    }
   }
 
-  void _showReceiptDialog(String receiptNumber, double amountPaid, List<String> monthsPaid) {
+  void _showReceiptDialog(PaymentRecord record) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -285,20 +247,178 @@ class _FeeCollectionPageState extends State<FeeCollectionPage> {
           content: SingleChildScrollView(
             child: ListBody(
               children: <Widget>[
-                Text('Receipt No: $receiptNumber'), Text('Student: ${_selectedStudent?.name ?? 'N/A'}'),
-                Text('Class: ${_selectedStudent?.className ?? 'N/A'}'), Text('Amount Paid: ₹${amountPaid.toStringAsFixed(2)}'),
-                Text('Payment Date: ${DateFormat('dd MMM, yyyy').format(_paymentDate)}'), Text('Payment Mode: $_selectedPaymentMode'),
-                Text('Months Paid: ${monthsPaid.join(", ")}'),
-                if (_remarksController.text.isNotEmpty) Text('Remarks: ${_remarksController.text}'),
+                Text('Receipt No: ${record.receiptNumber}'),
+                Text('Student: ${record.studentName}'),
+                Text('Amount Paid: ₹${record.amountPaid.toStringAsFixed(2)}'),
+                if (record.discount > 0)
+                  Text('Discount Given: ₹${record.discount.toStringAsFixed(2)}'),
+                Text('Payment Date: ${DateFormat('dd MMM, yyyy').format(record.paymentDate)}'),
+                Text('Payment Mode: ${record.paymentMode}'),
+                Text('Installments Paid: ${record.paidForInstallments.join(", ")}'),
+                if (record.remarks != null && record.remarks!.isNotEmpty)
+                  Text('Remarks: ${record.remarks!}'),
               ],
             ),
           ),
           actions: <Widget>[
-            TextButton(child: const Text('Print/Share (Simulated)'), onPressed: () { Navigator.of(context).pop(); }),
-            TextButton(child: const Text('Close'), onPressed: () { Navigator.of(context).pop(); }),
+            TextButton(child: const Text('Close'), onPressed: () => Navigator.of(context).pop()),
           ],
         );
       },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(flex: 2, child: _buildSearchFilters(context)),
+                const SizedBox(width: 16),
+                Expanded(flex: 3, child: _buildResultsArea(context)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: _isSearching
+                  ? const Center(child: CircularProgressIndicator())
+                  : _selectedStudent != null
+                  ? _buildFeeCollectionFormContent(context)
+                  : Center(
+                child: Text(
+                  _errorMessage ?? 'Search for a student to view and collect fees.',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.grey.shade600),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchFilters(BuildContext context) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final TextTheme textTheme = Theme.of(context).textTheme;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text("Search Student", style: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: Colors.grey.shade700)),
+        const SizedBox(height: 6),
+        SizedBox(
+          height: 50,
+          child: TextField(
+            controller: _searchNameOrIdController,
+            decoration: InputDecoration(
+              hintText: 'Name or ID...',
+              prefixIcon: Icon(Icons.person_search_outlined, color: colorScheme.primary, size: 20),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+              filled: true,
+              fillColor: colorScheme.surfaceVariant.withOpacity(0.5),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 50,
+                child: DropdownButtonFormField<String>(
+                  decoration: InputDecoration(
+                    hintText: 'Class',
+                    prefixIcon: Icon(Icons.school_outlined, color: colorScheme.primary, size: 20),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                    filled: true,
+                    fillColor: colorScheme.surfaceVariant.withOpacity(0.5),
+                  ),
+                  value: _selectedClassFilter,
+                  items: _classListForFilter.map((String className) {
+                    return DropdownMenuItem<String>(
+                      value: className,
+                      child: Text(className, style: textTheme.bodySmall, overflow: TextOverflow.ellipsis),
+                    );
+                  }).toList(),
+                  onChanged: (String? newValue) {
+                    setState(() => _selectedClassFilter = newValue);
+                    _performSearch();
+                  },
+                  isExpanded: true,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: SizedBox(
+                height: 50,
+                child: TextField(
+                  controller: _searchRollNoController,
+                  decoration: InputDecoration(
+                    hintText: 'Roll No...',
+                    prefixIcon: Icon(Icons.onetwothree_outlined, color: colorScheme.primary, size: 20),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                    filled: true,
+                    fillColor: colorScheme.surfaceVariant.withOpacity(0.5),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildResultsArea(BuildContext context) {
+    if (_isSearching) {
+      return const Center(child: SizedBox(height: 110, child: Center(child: CircularProgressIndicator())));
+    }
+    if (_selectedStudent != null) {
+      return _buildStudentDetailsCard(context);
+    }
+    if (_searchResults.isNotEmpty) {
+      return _buildSearchResultsList(context);
+    }
+    return Container(
+      height: 110,
+      alignment: Alignment.center,
+      child: Text(
+        _errorMessage ?? "Search results will appear here.",
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: _errorMessage != null ? Colors.red : Colors.grey),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
+  Widget _buildSearchResultsList(BuildContext context) {
+    return Card(
+      elevation: 2,
+      child: Container(
+        constraints: const BoxConstraints(maxHeight: 110),
+        child: ListView.builder(
+          itemCount: _searchResults.length,
+          itemBuilder: (context, index) {
+            final student = _searchResults[index];
+            return ListTile(
+              title: Text(student.name),
+              subtitle: Text("${student.className} | Roll: ${student.rollNumber}"),
+              onTap: () => _loadStudentProfile(student.id),
+              dense: true,
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -330,10 +450,23 @@ class _FeeCollectionPageState extends State<FeeCollectionPage> {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
     final TextTheme textTheme = Theme.of(context).textTheme;
     String nextDueDate = "All Cleared";
-    final firstUnpaidMonth = _selectedStudent!.monthlyFees.firstWhere((m) => !m.isPaid, orElse: () => FeeMonthEntry(monthYear: "N/A", tuitionFee: 0));
-    if (firstUnpaidMonth.monthYear != "N/A") nextDueDate = firstUnpaidMonth.monthYear;
+
+    final firstUnpaidInstallment = _selectedStudent!.feeInstallments.firstWhere(
+          (m) => m.status != 'PAID',
+      orElse: () => FeeInstallment(
+        installmentName: "N/A",
+        status: 'PAID',
+        amountDue: 0,
+      ),
+    );
+
+    if (firstUnpaidInstallment.installmentName != "N/A") {
+      nextDueDate = firstUnpaidInstallment.installmentName;
+    }
+
     return Card(
-      elevation: 2, margin: const EdgeInsets.only(bottom: 16),
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: Padding(
         padding: const EdgeInsets.all(12.0),
@@ -342,15 +475,18 @@ class _FeeCollectionPageState extends State<FeeCollectionPage> {
           children: [
             Text("Fee Status Overview", style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.secondary)),
             const Divider(height: 16),
-            _buildStatusRow(context, "Total Annual Fee (Est.):", "₹${_selectedStudent!.totalAnnualFeeEstimate.toStringAsFixed(2)}"),
-            _buildStatusRow(context, "Total Paid (Session):", "₹${_selectedStudent!.totalPaidInSession.toStringAsFixed(2)}", valueColor: Colors.green.shade700),
-            _buildStatusRow(context, "Current Balance (Session):", "₹${_selectedStudent!.currentSessionOutstanding.toStringAsFixed(2)}", valueColor: _selectedStudent!.currentSessionOutstanding > 0 ? colorScheme.error : Colors.green.shade700),
-            _buildStatusRow(context, "Next Due Date:", nextDueDate),
+            _buildStatusRow(context, "Total Annual Fee:", "₹${_selectedStudent!.totalFees.toStringAsFixed(2)}"),
+            _buildStatusRow(context, "Total Paid:", "₹${_selectedStudent!.paidFees.toStringAsFixed(2)}", valueColor: Colors.green.shade700),
+            _buildStatusRow(context, "Total Discount:", "₹${_selectedStudent!.totalDiscountGiven.toStringAsFixed(2)}", valueColor: Colors.blue.shade700),
+            _buildStatusRow(context, "Total Due:", "₹${_selectedStudent!.dueFees.toStringAsFixed(2)}", valueColor: _selectedStudent!.dueFees > 0 ? colorScheme.error : Colors.green.shade700),
+            _buildStatusRow(context, "Next Due:", nextDueDate),
             if (_selectedStudent!.lastPayment != null) ...[
               const Divider(height: 16),
               Text("Last Payment Details:", style: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
               _buildStatusRow(context, "  Date:", DateFormat('dd MMM, yyyy').format(_selectedStudent!.lastPayment!.paymentDate)),
               _buildStatusRow(context, "  Amount:", "₹${_selectedStudent!.lastPayment!.amountPaid.toStringAsFixed(2)}"),
+              if (_selectedStudent!.lastPayment!.discount > 0)
+                _buildStatusRow(context, "  Discount:", "₹${_selectedStudent!.lastPayment!.discount.toStringAsFixed(2)}"),
               _buildStatusRow(context, "  Mode:", _selectedStudent!.lastPayment!.paymentMode),
               _buildStatusRow(context, "  Receipt:", _selectedStudent!.lastPayment!.receiptNumber),
             ]
@@ -387,127 +523,16 @@ class _FeeCollectionPageState extends State<FeeCollectionPage> {
     );
   }
 
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildMonthChip(BuildContext context, FeeInstallment installment) {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
     final TextTheme textTheme = Theme.of(context).textTheme;
+    final bool isActuallyPaid = installment.status == 'PAID';
+    final bool isCurrentlySelectedForPayment = installment.isSelectedForPayment;
 
-    return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Search Student", style: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: Colors.grey.shade700)),
-                      const SizedBox(height: 6),
-                      SizedBox(
-                        height: 50,
-                        child: TextField(
-                          controller: _searchNameOrIdController,
-                          decoration: InputDecoration(
-                            hintText: 'Name or ID...',
-                            prefixIcon: Icon(Icons.person_search_outlined, color: colorScheme.primary, size: 20),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 10),
-                            filled: true,
-                            fillColor: colorScheme.surfaceVariant.withOpacity(0.5),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: SizedBox(
-                              height: 50,
-                              child: DropdownButtonFormField<String>(
-                                decoration: InputDecoration(
-                                  hintText: 'Class',
-                                  prefixIcon: Icon(Icons.school_outlined, color: colorScheme.primary, size: 20),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                                  filled: true,
-                                  fillColor: colorScheme.surfaceVariant.withOpacity(0.5),
-                                ),
-                                value: _selectedClassFilter,
-                                items: _classListForFilter.map((String className) {
-                                  return DropdownMenuItem<String>(
-                                    value: className,
-                                    child: Text(className, style: textTheme.bodySmall, overflow: TextOverflow.ellipsis),
-                                  );
-                                }).toList(),
-                                onChanged: (String? newValue) {
-                                  setState(() { _selectedClassFilter = newValue; });
-                                  _performSearch();
-                                },
-                                isExpanded: true,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: SizedBox(
-                              height: 50,
-                              child: TextField(
-                                controller: _searchRollNoController,
-                                decoration: InputDecoration(
-                                  hintText: 'Roll No...',
-                                  prefixIcon: Icon(Icons.onetwothree_outlined, color: colorScheme.primary, size: 20),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 10),
-                                  filled: true,
-                                  fillColor: colorScheme.surfaceVariant.withOpacity(0.5),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  flex: 3,
-                  child: _selectedStudent != null
-                      ? _buildStudentDetailsCard(context)
-                      : (_searchAttempted
-                      ? Container(height: 110, alignment: Alignment.center, child: Text("No student found.", style: textTheme.bodyMedium?.copyWith(color: Colors.grey)))
-                      : const SizedBox(height: 110)
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Expanded(
-              child: _selectedStudent == null && !_searchAttempted
-                  ? Center(child: Text('Search for a student to collect fees.', style: textTheme.titleMedium?.copyWith(color: Colors.grey.shade600)))
-                  : _selectedStudent != null
-                  ? _buildFeeCollectionFormContent(context)
-                  : Center(child: Text('No student matches your criteria.', style: textTheme.titleMedium?.copyWith(color: Colors.grey.shade600))),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+    final parts = installment.installmentName.split(' - ');
+    final String monthName = (parts.length > 1) ? parts[1].substring(0, 3).toUpperCase() : installment.installmentName.substring(0, 3).toUpperCase();
+    final String feeType = parts[0];
 
-  // Helper widget for individual month chip
-  Widget _buildMonthChip(BuildContext context, FeeMonthEntry monthEntry) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-    final TextTheme textTheme = Theme.of(context).textTheme;
-    final bool isActuallyPaid = monthEntry.isPaid;
-    final bool isCurrentlySelectedForPayment = monthEntry.isSelectedForPayment;
 
     Color chipColor = isActuallyPaid
         ? Colors.green.shade50
@@ -520,21 +545,20 @@ class _FeeCollectionPageState extends State<FeeCollectionPage> {
 
 
     return Tooltip(
-      message: '${monthEntry.monthYear}\nFee: ₹${monthEntry.totalMonthlyFeeWithFine.toStringAsFixed(2)}${isActuallyPaid ? "\n(PAID)" : ""}',
+      message: '${installment.installmentName}\nFee: ₹${installment.amountDue.toStringAsFixed(2)}${isActuallyPaid ? "\n(PAID)" : ""}',
       child: GestureDetector(
         onTap: isActuallyPaid ? null : () {
           setState(() {
-            monthEntry.isSelectedForPayment = !monthEntry.isSelectedForPayment;
+            installment.isSelectedForPayment = !installment.isSelectedForPayment;
           });
         },
         child: Container(
-          width: 65, // Fixed width for chip
-          height: 65, // Fixed height for chip
+          width: 75,
+          height: 75,
           margin: const EdgeInsets.all(3.0),
           decoration: BoxDecoration(
               color: chipColor,
-              // shape: BoxShape.circle, // Make it circular
-              borderRadius: BorderRadius.circular(8), // Or slightly rounded rectangle
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(color: borderColor, width: 1.5),
               boxShadow: [
                 if(isCurrentlySelectedForPayment && !isActuallyPaid)
@@ -544,27 +568,32 @@ class _FeeCollectionPageState extends State<FeeCollectionPage> {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    monthEntry.monthYear.split(" ")[0].substring(0,3).toUpperCase(), // E.g., APR
-                    style: textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 11,
-                      color: contentColor,
+              Padding(
+                padding: const EdgeInsets.all(4.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      monthName,
+                      style: textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        color: contentColor,
+                      ),
                     ),
-                  ),
-                  Text(
-                    monthEntry.monthYear.split(" ")[1], // Year
-                    style: textTheme.labelSmall?.copyWith(fontSize: 9, color: contentColor.withOpacity(0.8)),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '₹${monthEntry.totalMonthlyFeeWithFine.toStringAsFixed(0)}',
-                    style: textTheme.labelSmall?.copyWith(fontSize: 10, color: contentColor.withOpacity(0.9)),
-                  ),
-                ],
+                    Text(
+                      feeType,
+                      style: textTheme.labelSmall?.copyWith(fontSize: 8, color: contentColor.withOpacity(0.8)),
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '₹${installment.amountDue.toStringAsFixed(0)}',
+                      style: textTheme.labelSmall?.copyWith(fontSize: 10, color: contentColor.withOpacity(0.9)),
+                    ),
+                  ],
+                ),
               ),
               if (chipIconData != null)
                 Positioned(
@@ -591,31 +620,33 @@ class _FeeCollectionPageState extends State<FeeCollectionPage> {
     Widget monthSelectionWidget = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Select Months for Payment:', style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+        Text('Select Installments for Payment:', style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         Container(
-            constraints: const BoxConstraints(maxHeight: 160, minHeight: 70), // Adjusted maxHeight
+            constraints: const BoxConstraints(maxHeight: 250, minHeight: 80),
             decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade200), // Lighter border
+                border: Border.all(color: Colors.grey.shade200),
                 borderRadius: BorderRadius.circular(8)
             ),
-            child: _selectedStudent == null || _selectedStudent!.monthlyFees.isEmpty
+            child: _selectedStudent == null || _selectedStudent!.feeInstallments.isEmpty
                 ? Center(child: Padding(padding: const EdgeInsets.all(16.0), child: Text("No fee structure found.", style: textTheme.titleSmall)))
-                : Padding( // Add some padding around the Wrap
+                : Padding(
               padding: const EdgeInsets.all(4.0),
-              child: Wrap(
-                spacing: 6.0, // Horizontal space between chips
-                runSpacing: 6.0, // Vertical space between lines of chips
-                children: _selectedStudent!.monthlyFees.map((monthEntry) {
-                  return _buildMonthChip(context, monthEntry);
-                }).toList(),
+              child: SingleChildScrollView(
+                child: Wrap(
+                  spacing: 6.0,
+                  runSpacing: 6.0,
+                  children: _selectedStudent!.feeInstallments.map((installment) {
+                    return _buildMonthChip(context, installment);
+                  }).toList(),
+                ),
               ),
             )
         ),
       ],
     );
 
-    Widget feeSummaryWidget = Card( /* ... Fee Summary Card (same as before) ... */
+    Widget feeSummaryWidget = Card(
       elevation: 1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       margin: const EdgeInsets.symmetric(vertical: 8.0),
@@ -653,7 +684,7 @@ class _FeeCollectionPageState extends State<FeeCollectionPage> {
       ),
     );
 
-    Widget paymentInputWidget = Column( /* ... Payment Input Widget (same as before) ... */
+    Widget paymentInputWidget = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Payment Details:', style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
@@ -670,7 +701,7 @@ class _FeeCollectionPageState extends State<FeeCollectionPage> {
                 icon: Icon(Icons.calendar_today, size: 16, color: colorScheme.primary),
                 label: Text('Change', style: TextStyle(color: colorScheme.primary, fontSize: 12)),
                 onPressed: () => _selectPaymentDate(context),
-                style: TextButton.styleFrom(padding: EdgeInsets.symmetric(horizontal: 6)),
+                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6)),
               ),
             ),
           ],
@@ -693,11 +724,11 @@ class _FeeCollectionPageState extends State<FeeCollectionPage> {
             ),
           ),
         ),
-        if (_selectedPaymentMode == 'Cheque') ...[
+        if (_selectedPaymentMode == 'CHEQUE') ...[
           const SizedBox(height: 10),
           TextField(controller: _chequeDetailsController, decoration: InputDecoration(labelText: 'Cheque No. / Bank Name', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12))),
         ],
-        if (_selectedPaymentMode == 'Digital Payment') ...[
+        if (_selectedPaymentMode == 'DIGITAL_PAYMENT') ...[
           const SizedBox(height: 10),
           TextField(controller: _transactionIdController, decoration: InputDecoration(labelText: 'Transaction ID / Ref No.', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12))),
         ],
@@ -706,7 +737,7 @@ class _FeeCollectionPageState extends State<FeeCollectionPage> {
       ],
     );
 
-    Widget actionButtonsWidget = Column( /* ... Action Buttons Widget (same as before) ... */
+    Widget actionButtonsWidget = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.start,
       children: [
@@ -790,15 +821,20 @@ class _FeeCollectionPageState extends State<FeeCollectionPage> {
               }
           ),
           const SizedBox(height: 24),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.check_circle_outline),
-            label: const Text('Process Payment & Generate Receipt'),
-            onPressed: _processPayment,
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              textStyle: textTheme.labelLarge?.copyWith(color: colorScheme.onPrimary, fontSize: 16),
-              backgroundColor: colorScheme.primary,
-              foregroundColor: colorScheme.onPrimary,
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              icon: _isProcessingPayment
+                  ? Container(width: 20, height: 20, margin: const EdgeInsets.only(right: 8), child: const CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
+                  : const Icon(Icons.check_circle_outline),
+              label: Text(_isProcessingPayment ? 'PROCESSING...' : 'Process Payment & Generate Receipt'),
+              onPressed: _isProcessingPayment ? null : _processPayment,
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(color: Theme.of(context).colorScheme.onPrimary, fontSize: 16),
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              ),
             ),
           ),
           const SizedBox(height: 20),

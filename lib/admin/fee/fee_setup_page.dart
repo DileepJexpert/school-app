@@ -1,24 +1,36 @@
 // lib/admin/pages/fee/fee_setup_page.dart
-import 'dart:async'; // For Future.delayed or API call simulation
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter/services.dart'; // For TextInputFormatter
+import 'package:flutter/services.dart';
 
-// Conceptual: You would create this service based on the API integration guide
-// import '../../../services/fee_setup_api_service.dart';
-// import '../../../models/fee_structure_dto.dart'; // For API communication
+// --- Import your new API service ---
+import '../../../services/fee_api_service.dart';
+
+
+// --- Helper class to manage fee heads and their frequency ---
+class FeeHead {
+  final String name;
+  final String frequency; // "MONTHLY", "YEARLY", or "ONE_TIME"
+
+  FeeHead({required this.name, required this.frequency});
+
+  // A unique display name used as a key for controllers
+  String get displayName => "$name ($frequency)";
+}
+
 
 // Represents the fee data for a single class for UI management
 class ClassFeeSetupData {
   final String className;
   Map<String, TextEditingController> feeComponentControllers = {};
 
-  ClassFeeSetupData({required this.className, required List<String> allFeeHeads, Map<String, double>? existingFees}) {
+  ClassFeeSetupData({required this.className, required List<FeeHead> allFeeHeads, Map<String, double>? existingFees}) {
     for (var head in allFeeHeads) {
-      String initialValue = existingFees != null && existingFees.containsKey(head)
-          ? existingFees[head]!.toStringAsFixed(2)
+      String initialValue = existingFees != null && existingFees.containsKey(head.displayName)
+          ? existingFees[head.displayName]!.toStringAsFixed(2)
           : "0.00";
-      feeComponentControllers[head] = TextEditingController(text: initialValue);
+      feeComponentControllers[head.displayName] = TextEditingController(text: initialValue);
     }
   }
 
@@ -37,10 +49,11 @@ class FeeSetupPage extends StatefulWidget {
 }
 
 class _FeeSetupPageState extends State<FeeSetupPage> {
+  // --- Instantiate your API service ---
+  final FeeApiService _apiService = FeeApiService();
+
   String? _selectedAcademicYear;
-  List<String> _academicYears = [
-    "2024-2025", "2025-2026", "2026-2027"
-  ];
+  final List<String> _academicYears = ["2024-2025", "2025-2026", "2026-2027"];
   bool _isFetchingYears = false;
 
   final List<String> _schoolClasses = [
@@ -50,16 +63,21 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
     "Class 12 Science", "Class 12 Commerce", "Class 12 Arts",
   ];
 
-  final List<String> _feeHeads = [
-    "Tuition Fee (Monthly)", "Transport Fee (Monthly)", "Annual Fee (Yearly)",
-    "Admission Fee (One Time)", "Exam Fee (Per Term/Year)", "Lab Fee (Yearly/Monthly)",
-    "Library Fee (Yearly)", "Miscellaneous Fee (Yearly)",
+  final List<FeeHead> _feeHeads = [
+    FeeHead(name: "Tuition Fee", frequency: "MONTHLY"),
+    FeeHead(name: "Transport Fee", frequency: "MONTHLY"),
+    FeeHead(name: "Annual Fee", frequency: "YEARLY"),
+    FeeHead(name: "Admission Fee", frequency: "ONE_TIME"),
+    FeeHead(name: "Exam Fee", frequency: "YEARLY"),
+    FeeHead(name: "Lab Fee", frequency: "YEARLY"),
+    FeeHead(name: "Library Fee", frequency: "YEARLY"),
+    FeeHead(name: "Miscellaneous Fee", frequency: "YEARLY"),
   ];
 
   List<ClassFeeSetupData> _classFeeSetups = [];
-  ClassFeeSetupData? _currentlySelectedClassSetup; // For Master-Detail view
+  ClassFeeSetupData? _currentlySelectedClassSetup;
 
-  bool _isLoading = false; // For saving
+  bool _isLoading = false;
   bool _isFetchingStructure = false;
   String? _errorMessage;
 
@@ -73,13 +91,12 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
 
   Future<void> _fetchAcademicYears() async {
     setState(() => _isFetchingYears = true);
-    // Simulate API call
-    // await Future.delayed(const Duration(milliseconds: 500));
-    // In a real app, fetch from API:
-    // try { _academicYears = await _apiService.getAcademicYears(); } catch (e) { ... }
+    // In a real app, you would fetch this list from another API endpoint
+    await Future.delayed(const Duration(milliseconds: 500));
     setState(() => _isFetchingYears = false);
   }
 
+  // --- UPDATED: Connects to the backend to fetch data ---
   Future<void> _fetchAndInitializeFeeStructureForYear(String academicYear) async {
     setState(() {
       _isFetchingStructure = true;
@@ -91,41 +108,41 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
       _classFeeSetups.clear();
     });
 
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 1));
-    List<Map<String,dynamic>> fetchedStructures = [];
-    if (academicYear == "2024-2025") {
-      fetchedStructures = [
-        {"className": "Nursery", "feeComponents": {"Tuition Fee (Monthly)": 1500.0, "Annual Fee (Yearly)": 5000.0}},
-        {"className": "Class 1", "feeComponents": {"Tuition Fee (Monthly)": 2000.0, "Transport Fee (Monthly)": 700.0, "Annual Fee (Yearly)": 6000.0}},
-      ];
-    }
+    try {
+      // --- API CALL ---
+      final fetchedStructures = await _apiService.getFeeStructureForYear(academicYear);
 
-    Map<String, Map<String, double>> existingFeesByClass = {};
-    for (var structure in fetchedStructures) {
-      existingFeesByClass[structure['className'] as String] = Map<String, double>.from(structure['feeComponents'] as Map);
-    }
+      Map<String, Map<String, double>> existingFeesByClass = {};
+      for (var structure in fetchedStructures) {
+        final className = structure['className'] as String;
+        final List<dynamic> components = structure['feeComponents'] as List<dynamic>;
+        existingFeesByClass[className] = {};
+        for (var component in components) {
+          final feeName = component['feeName'] as String;
+          final frequency = component['frequency'] as String;
+          final amount = (component['amount'] as num).toDouble();
+          final displayName = "$feeName ($frequency)";
+          existingFeesByClass[className]![displayName] = amount;
+        }
+      }
 
-    setState(() {
-      _classFeeSetups = _schoolClasses.map((className) {
-        return ClassFeeSetupData(
-          className: className,
-          allFeeHeads: _feeHeads,
-          existingFees: existingFeesByClass[className],
-        );
-      }).toList();
-      _isFetchingStructure = false;
-    });
-  }
-
-  void _initializeEmptyFeeSetups() {
-    for (var setup in _classFeeSetups) {
-      setup.dispose();
+      setState(() {
+        _classFeeSetups = _schoolClasses.map((className) {
+          return ClassFeeSetupData(
+            className: className,
+            allFeeHeads: _feeHeads,
+            existingFees: existingFeesByClass[className],
+          );
+        }).toList();
+        if (_classFeeSetups.isNotEmpty) {
+          _currentlySelectedClassSetup = _classFeeSetups.first;
+        }
+      });
+    } catch (e) {
+      setState(() => _errorMessage = "Error: ${e.toString()}");
+    } finally {
+      setState(() => _isFetchingStructure = false);
     }
-    _classFeeSetups = _schoolClasses
-        .map((className) => ClassFeeSetupData(className: className, allFeeHeads: _feeHeads))
-        .toList();
-    setState(() {});
   }
 
   @override
@@ -136,32 +153,61 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
     super.dispose();
   }
 
+  // --- UPDATED: Connects to the backend to save data ---
   Future<void> _saveFeeStructure() async {
-    if (_selectedAcademicYear == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select an academic year.')));
-      return;
-    }
-    if (!_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please correct errors before saving.')));
+    if (_selectedAcademicYear == null || !_formKey.currentState!.validate()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please correct errors before saving.')),
+      );
       return;
     }
 
     setState(() => _isLoading = true);
+
     List<Map<String, dynamic>> feeStructurePayload = _classFeeSetups.map((classSetup) {
-      Map<String, double> components = {};
-      classSetup.feeComponentControllers.forEach((head, controller) {
-        components[head] = double.tryParse(controller.text) ?? 0.0;
+      List<Map<String, dynamic>> components = [];
+      _feeHeads.forEach((feeHead) {
+        final controller = classSetup.feeComponentControllers[feeHead.displayName]!;
+        final amount = double.tryParse(controller.text) ?? 0.0;
+        if (amount > 0) {
+          components.add({
+            "feeName": feeHead.name,
+            "amount": amount,
+            "frequency": feeHead.frequency,
+          });
+        }
       });
-      return {"className": classSetup.className, "academicYear": _selectedAcademicYear!, "feeComponents": components};
-    }).toList();
 
-    print("--- Fee Structure to Save ---");
-    print(feeStructurePayload);
-    // TODO: API Call: await _apiService.saveFeeStructure(feeStructurePayload);
-    await Future.delayed(const Duration(seconds: 2));
+      if (components.isEmpty) return null;
 
-    setState(() => _isLoading = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fee structure for $_selectedAcademicYear saved! (Simulated)'), backgroundColor: Colors.green));
+      return {
+        "className": classSetup.className,
+        "academicYear": _selectedAcademicYear!,
+        "feeComponents": components
+      };
+    }).whereType<Map<String, dynamic>>().toList();
+
+    try {
+      // --- API CALL ---
+      await _apiService.saveFeeStructure(feeStructurePayload);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Fee structure for $_selectedAcademicYear saved successfully!'),
+          backgroundColor: Colors.green,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error saving data: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   void _selectClassForEditing(ClassFeeSetupData classSetup) {
@@ -175,11 +221,9 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
     final TextTheme textTheme = Theme.of(context).textTheme;
 
-    return Scaffold( // Added Scaffold
-      appBar: AppBar( // Added AppBar
+    return Scaffold(
+      appBar: AppBar(
         title: Text("Fee Structure Setup", style: GoogleFonts.lato()),
-        // backgroundColor: colorScheme.primaryContainer, // Optional: customize AppBar color
-        // elevation: 1, // Optional: customize elevation
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -188,10 +232,11 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Title is now in AppBar, this can be a subtitle or removed
-              // Text("Set Up School Fee Structure", style: GoogleFonts.oswald(fontSize: 26, fontWeight: FontWeight.bold, color: colorScheme.primary)),
-              // const SizedBox(height: 16),
-              if (_errorMessage != null) Text(_errorMessage!, style: TextStyle(color: Colors.red, fontSize: 14)),
+              if (_errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 14)),
+                ),
 
               Row(children: [
                 Expanded(
@@ -209,28 +254,24 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
                     validator: (value) => value == null ? 'Please select an academic year' : null,
                   ),
                 ),
-                if (_isFetchingYears) const Padding(padding: EdgeInsets.all(8.0), child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                if (_isFetchingYears || _isFetchingStructure) const Padding(padding: EdgeInsets.all(8.0), child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))),
               ]),
               const SizedBox(height: 16),
 
-              if (_selectedAcademicYear != null && !_isFetchingStructure)
+              if (_selectedAcademicYear != null)
                 Expanded(
-                  child: LayoutBuilder(
+                  child: _isFetchingStructure
+                      ? const Center(child: CircularProgressIndicator())
+                      : LayoutBuilder(
                     builder: (context, constraints) {
                       bool isWideScreen = constraints.maxWidth > 700;
                       if (isWideScreen) {
                         return Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              flex: 1,
-                              child: _buildClassListPanel(colorScheme, textTheme),
-                            ),
+                            Expanded(flex: 1, child: _buildClassListPanel(colorScheme, textTheme)),
                             const VerticalDivider(width: 16, thickness: 1),
-                            Expanded(
-                              flex: 2,
-                              child: _buildFeeInputPanel(colorScheme, textTheme),
-                            ),
+                            Expanded(flex: 2, child: _buildFeeInputPanel(colorScheme, textTheme)),
                           ],
                         );
                       } else {
@@ -239,8 +280,6 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
                     },
                   ),
                 )
-              else if (_isFetchingStructure)
-                const Expanded(child: Center(child: CircularProgressIndicator()))
               else
                 Expanded(child: Center(child: Text("Please select an academic year to proceed.", style: textTheme.titleMedium?.copyWith(color: Colors.grey.shade600)))),
 
@@ -268,13 +307,11 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(bottom: 8.0, top: 0), // Adjusted top padding
+          padding: const EdgeInsets.only(bottom: 8.0),
           child: Text("Classes", style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
         ),
         Expanded(
-          child: _classFeeSetups.isEmpty
-              ? Center(child: Text("No classes loaded for $_selectedAcademicYear.", style: textTheme.bodyMedium))
-              : Container(
+          child: Container(
             decoration: BoxDecoration(
               border: Border.all(color: Colors.grey.shade300),
               borderRadius: BorderRadius.circular(8),
@@ -320,7 +357,7 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(bottom: 8.0, top: 0), // Adjusted top padding
+          padding: const EdgeInsets.only(bottom: 8.0),
           child: Text(
             "Fee Components for: ${_currentlySelectedClassSetup!.className}",
             style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.primary),
@@ -338,14 +375,14 @@ class _FeeSetupPageState extends State<FeeSetupPage> {
                     padding: const EdgeInsets.symmetric(vertical: 8.0),
                     child: Row(
                       children: [
-                        Expanded(flex: 3, child: Text(feeHead, style: textTheme.bodyMedium)),
+                        Expanded(flex: 3, child: Text(feeHead.displayName, style: textTheme.bodyMedium)),
                         const SizedBox(width: 10),
                         Expanded(
                           flex: 2,
                           child: SizedBox(
                             height: 45,
                             child: TextFormField(
-                              controller: _currentlySelectedClassSetup!.feeComponentControllers[feeHead],
+                              controller: _currentlySelectedClassSetup!.feeComponentControllers[feeHead.displayName],
                               keyboardType: const TextInputType.numberWithOptions(decimal: true),
                               inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
                               decoration: InputDecoration(

@@ -1,63 +1,14 @@
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
+part of 'fee_reports_page.dart';
+
 import 'dart:convert';
+
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'fee_reports_widgets.dart';
+import 'package:intl/intl.dart';
 
-import 'package:school_website/models//fee_report_models.dart';
-import 'fee_reports_widgets.dart'; // ✅ widget helpers
-
-class FeeReportSummary {
-  final double totalCollected;
-  final double totalDue;
-  final double totalDiscountGiven;
-  final int totalTransactions;
-
-  FeeReportSummary({
-    required this.totalCollected,
-    required this.totalDue,
-    required this.totalDiscountGiven,
-    required this.totalTransactions,
-  });
-}
-
-class FeeTransactionItem {
-  final String id;
-  final DateTime paymentDate;
-  final String receiptNumber;
-  final String studentName;
-  final String className;
-  final String rollNumber;
-  final List<String> paidForMonths;
-  final double grossAmount;
-  final double discount;
-  final double netAmountPaid;
-  final String paymentMode;
-  final String collectedBy;
-
-  FeeTransactionItem({
-    required this.id,
-    required this.paymentDate,
-    required this.receiptNumber,
-    required this.studentName,
-    required this.className,
-    required this.rollNumber,
-    required this.paidForMonths,
-    required this.grossAmount,
-    required this.discount,
-    required this.netAmountPaid,
-    required this.paymentMode,
-    required this.collectedBy,
-  });
-}
-
-class FeeReportsPage extends StatefulWidget {
-  const FeeReportsPage({super.key});
-
-  @override
-  State<FeeReportsPage> createState() => _FeeReportsPageState();
-}
+import '../../models/fee_report_models.dart';
+import 'fee_reports_page.dart';
 
 class _FeeReportsPageState extends State<FeeReportsPage> {
   DateTimeRange? _selectedDateRange;
@@ -97,7 +48,6 @@ class _FeeReportsPageState extends State<FeeReportsPage> {
     super.dispose();
   }
 
-  // ✅ Missing function added here
   Future<void> _selectDateRange(BuildContext context) async {
     final DateTimeRange? picked = await showDateRangePicker(
       context: context,
@@ -105,7 +55,6 @@ class _FeeReportsPageState extends State<FeeReportsPage> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
-
     if (picked != null && picked != _selectedDateRange) {
       setState(() {
         _selectedDateRange = picked;
@@ -115,7 +64,17 @@ class _FeeReportsPageState extends State<FeeReportsPage> {
   }
 
   Future<void> _fetchReportData() async {
-    setState(() { _isLoading = true; _errorMessage = null; });
+    if (_selectedDateRange == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select a date range."), backgroundColor: Colors.orangeAccent),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
     try {
       const baseUrl = "http://localhost:8080/api/reports/fees/report-summary";
@@ -184,7 +143,9 @@ class _FeeReportsPageState extends State<FeeReportsPage> {
         _errorMessage = "Error fetching report: $e";
       });
     } finally {
-      setState(() { _isLoading = false; });
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -194,62 +155,8 @@ class _FeeReportsPageState extends State<FeeReportsPage> {
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Fee Collection Report", style: GoogleFonts.oswald(
-                fontSize: 26, fontWeight: FontWeight.bold, color: colorScheme.primary)),
-            const SizedBox(height: 16),
-
-            // Filters
-            buildFilterSection(
-              context: context,
-              colorScheme: colorScheme,
-              textTheme: textTheme,
-              selectedDateRange: _selectedDateRange,
-              selectedClassFilter: _selectedClassFilter,
-              selectedPaymentModeFilter: _selectedPaymentModeFilter,
-              searchController: _searchQueryController,
-              classListForFilter: _classListForFilter,
-              paymentModesForFilter: _paymentModesForFilter,
-              onApplyFilters: _fetchReportData,
-              onSelectDateRange: () => _selectDateRange(context),
-              onClassFilterChange: (val) => setState(() => _selectedClassFilter = val),
-              onPaymentModeChange: (val) => setState(() => _selectedPaymentModeFilter = val),
-            ),
-
-            const SizedBox(height: 16),
-
-            if (_isLoading)
-              const Expanded(child: Center(child: CircularProgressIndicator()))
-            else if (_errorMessage != null)
-              Expanded(child: Center(child: Text(_errorMessage!,
-                  style: TextStyle(color: colorScheme.error, fontSize: 16))))
-            else if (_reportSummary == null && _transactions.isEmpty)
-                Expanded(child: Center(child: Text("Apply filters to generate report.",
-                    style: textTheme.titleMedium)))
-              else
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (_reportSummary != null)
-                          buildSummarySection(_reportSummary!, colorScheme, textTheme, context),
-                        const SizedBox(height: 16),
-                        if (_transactions.isNotEmpty)
-                          buildChartsSection(context, colorScheme, textTheme, _collectionByClassData, _collectionByPaymentModeData),
-                        const SizedBox(height: 16),
-                        if (_transactions.isNotEmpty)
-                          buildTransactionsTable(textTheme, _transactions, context),
-                      ],
-                    ),
-                  ),
-                ),
-          ],
-        ),
+      body: Center(
+        child: Text("TODO: Build UI with widgets"),
       ),
     );
   }

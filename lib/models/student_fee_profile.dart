@@ -1,24 +1,46 @@
-// lib/models/student_fee_profile.dart
 import 'package:json_annotation/json_annotation.dart';
 import 'fee_installment.dart';
 import 'payment_record.dart';
 
 part 'student_fee_profile.g.dart';
 
+
+
 @JsonSerializable(explicitToJson: true)
 class StudentFeeProfile {
+  @JsonKey(defaultValue: '')
   final String id;
-  final String name;
-  final String className;
-  final String rollNumber;
-  final String parentName;
-  final List<FeeInstallment> monthlyFees;
-  final PaymentRecord? lastPayment; // Nullable
 
-  final double totalAnnualFeeEstimate;
-  final double totalPaidInSession;
-  final double currentSessionOutstanding;
-  final String nextDueDate;
+  @JsonKey(defaultValue: '')
+  final String name;
+
+  @JsonKey(defaultValue: '')
+  final String className;
+
+  @JsonKey(defaultValue: '')
+  final String rollNumber;
+
+  @JsonKey(defaultValue: '')
+  final String parentName;
+
+  // Corrected: Renamed to 'feeInstallments' to match your page code
+  @JsonKey(defaultValue: [])
+  final List<FeeInstallment> feeInstallments;
+
+  final PaymentRecord? lastPayment;
+
+  // Corrected: Added fields to match your page code
+  @JsonKey(defaultValue: 0.0)
+  final double totalFees;
+
+  @JsonKey(defaultValue: 0.0)
+  final double paidFees;
+
+  @JsonKey(defaultValue: 0.0)
+  final double dueFees;
+
+  @JsonKey(defaultValue: 0.0)
+  final double totalDiscountGiven;
 
   StudentFeeProfile({
     required this.id,
@@ -26,12 +48,12 @@ class StudentFeeProfile {
     required this.className,
     required this.rollNumber,
     required this.parentName,
-    required this.monthlyFees,
+    required this.feeInstallments,
     this.lastPayment,
-    required this.totalAnnualFeeEstimate,
-    required this.totalPaidInSession,
-    required this.currentSessionOutstanding,
-    required this.nextDueDate,
+    required this.totalFees,
+    required this.paidFees,
+    required this.dueFees,
+    required this.totalDiscountGiven,
   });
 
   factory StudentFeeProfile.fromJson(Map<String, dynamic> json) => _$StudentFeeProfileFromJson(json);

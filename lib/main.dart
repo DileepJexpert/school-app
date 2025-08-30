@@ -10,9 +10,23 @@ import 'pages/admission_form_page.dart';
 import 'pages/enquiry_page.dart';
 import 'pages/result_upload_page.dart';
 import 'admin/admin_dashboard_page.dart';
-
-void main() {
+import 'services/dio_client.dart';
+/*void main() {
   usePathUrlStrategy(); // Optional: Removes '#' from URLs in web builds
+  runApp(const MyApp());
+}*/
+
+
+
+void main() async { // Make main async
+  // This line is needed to ensure bindings are initialized before async calls
+  WidgetsFlutterBinding.ensureInitialized();
+
+  usePathUrlStrategy(); // Optional: Removes '#' from URLs in web builds
+
+  // Initialize your Dio client before running the app. This is the fix.
+  DioClient.initialize();
+
   runApp(const MyApp());
 }
 

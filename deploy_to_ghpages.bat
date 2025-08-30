@@ -1,32 +1,23 @@
 @echo off
-REM ===== Deploy Flutter Web to GitHub Pages =====
-
-echo Building Flutter Web...
-flutter build web --release --base-href="/school-app/"
-
-REM Optional: copy 404.html if you use clean URLs
-IF EXIST web\404.html (
-    echo Copying 404.html...
-    copy web\404.html build\web\
-)
+echo ==== Building Flutter Web ====
+flutter build web --release --base-href "/school-app/"
 
 cd build\web
 
-echo Initializing Git repo inside build/web...
+echo ==== Initializing Git in build/web ====
 git init
-git checkout -b gh-pages
 git remote add origin https://github.com/DileepJexpert/school-app.git
+git checkout -b gh-pages
 
-echo Adding and committing files...
+echo ==== Adding and committing files ====
 git add .
-git commit -m "Manual deploy of Flutter web to gh-pages"
+git commit -m "Deploy to GitHub Pages"
 
-echo Pushing to gh-pages branch...
+echo ==== Pushing to gh-pages branch ====
 git push -f origin gh-pages
 
-cd ../..
+echo ==== Cleaning up ====
+rd /s /q .git
 
-echo.
-echo ✅ Deployment Complete!
-echo 🌐 Visit: https://dileepjexpert.github.io/school-app/
-pause
+echo ✅ Deployment complete!
+echo 🔗 https://DileepJexpert.github.io/school-app/
